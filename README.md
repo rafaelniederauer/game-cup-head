@@ -2,7 +2,7 @@
 
 A boss-battle platformer inspired by Cuphead, built using Python, Pygame, and Kenney assets.
 
-![Game Screen Placeholder](https://via.placeholder.com/800x450.png?text=Cuphead+Kenney+Edition)
+![Game Screenshot](screenshot.png)
 
 ## Features
 
