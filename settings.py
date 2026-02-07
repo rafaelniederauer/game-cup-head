@@ -12,6 +12,7 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 PINK = (255, 182, 193)
+YELLOW = (255, 255, 0)
 
 # Physics
 GRAVITY = 0.8

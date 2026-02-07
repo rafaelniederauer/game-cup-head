@@ -6,6 +6,10 @@ A boss-battle platformer inspired by Cuphead, built using Python, Pygame, and Ke
 
 ## Features
 
+- **Interactive Overworld Map**:
+    - **Navigation**: Walk around the island map using arrow keys.
+    - **Encounter Nodes**: Approach flags on the map to enter boss battles.
+    - **State Persistence**: Return to the map after a victory or defeat.
 - **Dynamic Player Mechanics**:
     - **8-Way Shooting**: Aim in any direction using arrow keys while shooting.
     - **Dashing**: Quick horizontal dash with invincibility frames for dodging attacks.

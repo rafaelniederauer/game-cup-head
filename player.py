@@ -166,3 +166,30 @@ class Player(pygame.sprite.Sprite):
             self.on_ground = True
         
         self.animate()
+
+
+class Ghost(pygame.sprite.Sprite):
+    def __init__(self, pos):
+        super().__init__()
+        # Use player sprites but made ghostly
+        sprites = SpriteLoader.get_player_sprites()
+        self.image = sprites['jump'].copy()
+        
+        # Make semi-transparent and blue
+        self.image.set_alpha(150)
+        blue_overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+        blue_overlay.fill((0, 100, 255, 100)) # Adjust alpha for the tint
+        self.image.blit(blue_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        self.rect = self.image.get_rect(center=pos)
+        self.float_speed = 2
+        self.alpha = 150
+
+    def update(self):
+        # Float up and slowly fade out
+        self.rect.y -= self.float_speed
+        self.alpha -= 0.5
+        if self.alpha <= 0:
+            self.kill()
+        else:
+            self.image.set_alpha(int(self.alpha))
