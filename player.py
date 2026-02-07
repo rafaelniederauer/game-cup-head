@@ -19,9 +19,15 @@ class Player(pygame.sprite.Sprite):
         self.facing_right = True
         self.on_ground = False
         self.is_ducking = False
-        self.hp = 3
+        self.max_hp = 3
+        self.hp = self.max_hp
         self.invincible = False
         self.invinc_timer = 0
+        
+        # Persistence & Powers
+        self.coins = 5 # Start with some coins
+        self.powers = [] # List of power IDs like 'hp', 'speed', etc.
+        self.fire_rate_multiplier = 1.0
         
         # Dash
         self.is_dashing = False
@@ -64,8 +70,15 @@ class Player(pygame.sprite.Sprite):
 
     def start_dash(self):
         self.is_dashing = True
-        self.dash_timer = PLAYER_DASH_DURATION
-        self.dash_cooldown = 30 # half second approx
+        duration = PLAYER_DASH_DURATION
+        cooldown = 30
+        
+        if 'dash' in self.powers:
+            duration += 10 # Longer dash
+            cooldown = 20 # Faster reuse
+            
+        self.dash_timer = duration
+        self.dash_cooldown = cooldown
         self.direction.y = 0 # No gravity during dash
 
     def handle_dash(self):

@@ -8,7 +8,7 @@ from bullets import Bullet, BossBullet
 from overworld import Overworld
 
 class Battle:
-    def __init__(self, screen):
+    def __init__(self, screen, boss_type='slime'):
         self.screen = screen
         self.clock = pygame.time.Clock()
         
@@ -18,41 +18,78 @@ class Battle:
         self.player_group.add(self.player)
 
         self.boss_group = pygame.sprite.GroupSingle()
-        self.boss = Boss(SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200)
+        self.boss = Boss(SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200, boss_type)
         self.boss_group.add(self.boss)
 
         self.bullets = pygame.sprite.Group()
         self.boss_bullets = pygame.sprite.Group()
         self.ghost_group = pygame.sprite.Group()
         self.game_state = 'PLAYING' # PLAYING, KNOCKOUT, GAMEOVER
+        
+        # Shooting
+        self.shoot_timer = 0
+        self.shoot_cooldown = 15 # default frames
 
         # Background
         self.background = SpriteLoader.get_background()
 
     def handle_events(self):
+        action = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if self.game_state == 'PLAYING':
-                    if event.key == pygame.K_x:  # X for Shoot
+                    # Check for shoot
+                    if event.key == pygame.K_x and self.shoot_timer >= self.shoot_cooldown:
                         self.shoot()
+                        self.shoot_timer = 0
                 if event.key == pygame.K_r and (self.game_state in ['GAMEOVER', 'KNOCKOUT']): # R to restart
-                    return 'RESTART'
+                    action = 'RESTART'
+                if event.key == pygame.K_m and self.game_state == 'GAMEOVER': # M to Equip
+                    action = 'MENU'
                 if event.key == pygame.K_ESCAPE: # Back to overworld
-                    return 'OVERWORLD'
+                    action = 'OVERWORLD'
+        
+        if action:
+            return action
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_x] and self.game_state == 'PLAYING':
+            # Adjust cooldown if player has speed power
+            cooldown = self.shoot_cooldown
+            if 'speed' in self.player.powers:
+                cooldown = 8 # Much faster
+                
+            if self.shoot_timer >= cooldown:
+                self.shoot()
+                self.shoot_timer = 0
+                
         return None
 
     def shoot(self):
         direction = self.player.get_shoot_direction()
-        bullet = Bullet(self.player.rect.centerx, self.player.rect.centery, direction)
+        scale = 0.7
+        if 'wide' in self.player.powers:
+            scale = 1.2
+        bullet = Bullet(self.player.rect.centerx, self.player.rect.centery, direction, scale)
         self.bullets.add(bullet)
 
     def boss_shoot(self):
         if self.boss.alive() and self.game_state == 'PLAYING' and self.boss.phase != 'intro':
-            bullet = BossBullet(self.boss.rect.centerx, self.boss.rect.centery, self.player.rect.centerx, self.player.rect.centery)
-            self.boss_bullets.add(bullet)
+            attack_settings = self.boss.get_attack_settings()
+            for b_type, scale, speed, angle in attack_settings:
+                bullet = BossBullet(
+                    self.boss.rect.centerx, 
+                    self.boss.rect.centery, 
+                    self.player.rect.centerx, 
+                    self.player.rect.centery,
+                    bullet_type=b_type,
+                    scale=scale,
+                    speed=speed,
+                    angle_offset=angle
+                )
+                self.boss_bullets.add(bullet)
 
     def update(self):
         if self.game_state == 'KNOCKOUT':
@@ -67,6 +104,7 @@ class Battle:
             self.ghost_group.update()
             return
 
+        self.shoot_timer += 1
         self.player_group.update()
         self.boss_group.update()
         self.bullets.update()
@@ -159,7 +197,7 @@ class Battle:
         pygame.draw.circle(self.screen, (255, 255, 0), (indicator_x, bar_y + bar_h//2), 15)
 
         restart_font = pygame.font.SysFont('Arial', 36)
-        restart_text = restart_font.render("Press R to return to Map", True, WHITE)
+        restart_text = restart_font.render("Press R to return to Map | M to Equip", True, WHITE)
         self.screen.blit(restart_text, (SCREEN_WIDTH//2 - restart_text.get_width()//2, SCREEN_HEIGHT - 100))
 
     def draw_player_hp(self):
@@ -177,34 +215,103 @@ class Game:
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Cuphead Kenney Edition")
         self.clock = pygame.time.Clock()
+        
+        # Persistent Global State
+        self.global_player_data = {
+            'coins': 10,
+            'max_hp_base': 3,
+            'powers': [], # Owned powers
+            'equipped_powers': [], # Active powers
+            'defeated_bosses': [] # List of boss names/types defeated
+        }
+        
         self.state = 'OVERWORLD'
-        self.overworld = Overworld(self.screen)
+        self.overworld = Overworld(self.screen, self.global_player_data['defeated_bosses'])
         self.battle = None
+        self.shop = None
+        self.menu = None
 
     def run(self):
         while True:
             if self.state == 'OVERWORLD':
-                result = self.overworld.run()
-                if result == 'BATTLE':
-                    self.battle = Battle(self.screen)
+                events = pygame.event.get()
+                node_type, node_name = self.overworld.run(events)
+                if node_type == 'BATTLE':
+                    self.battle = Battle(self.screen, node_name)
+                    # Sync persistent data to battle player
+                    self.battle.player.coins = self.global_player_data['coins']
+                    
+                    # Calculate HP: Base + 1 for each 'hp' power equipped
+                    extra_hp = self.global_player_data['equipped_powers'].count('hp')
+                    self.battle.player.max_hp = self.global_player_data['max_hp_base'] + extra_hp
+                    self.battle.player.hp = self.battle.player.max_hp
+                    
+                    # Only sync EQUIPPED powers to the battle player
+                    self.battle.player.powers = self.global_player_data['equipped_powers']
                     self.state = 'BATTLE'
+                elif node_type == 'SHOP':
+                    from shop import Shop
+                    self.shop = Shop(self.screen)
+                    self.shop.coins = self.global_player_data['coins']
+                    self.shop.owned_powers = self.global_player_data['powers']
+                    self.state = 'SHOP'
                 
                 # Overworld event loop
-                for event in pygame.event.get():
+                for event in events:
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_m:
+                            from menu import Menu
+                            self.menu = Menu(self.screen, self.global_player_data)
+                            self.state = 'MENU'
                 
                 pygame.display.flip()
 
             elif self.state == 'BATTLE':
                 action = self.battle.handle_events()
                 if action == 'RESTART' or action == 'OVERWORLD':
+                    if self.battle.game_state == 'KNOCKOUT':
+                        self.global_player_data['coins'] += 5
+                        # Record boss as defeated
+                        if self.battle.boss.boss_type not in self.global_player_data['defeated_bosses']:
+                            self.global_player_data['defeated_bosses'].append(self.battle.boss.boss_type)
+                    
                     self.state = 'OVERWORLD'
-                    self.battle = None # Clear battle state
+                    # Re-instantiate overworld to reflect changes (flag colors)
+                    self.overworld = Overworld(self.screen, self.global_player_data['defeated_bosses'])
+                    self.battle = None 
+                elif action == 'MENU':
+                    from menu import Menu
+                    self.menu = Menu(self.screen, self.global_player_data)
+                    self.state = 'MENU'
+                    self.battle = None # Clear battle since we're switching
                 else:
                     self.battle.update()
                     self.battle.draw()
+
+            elif self.state == 'SHOP':
+                action = self.shop.handle_events()
+                if action == 'OVERWORLD':
+                    self.global_player_data['coins'] = self.shop.coins
+                    # Just add bought items to owned powers
+                    for power_id in self.shop.purchased_items:
+                        if power_id not in self.global_player_data['powers'] or power_id == 'hp':
+                            self.global_player_data['powers'].append(power_id)
+                    
+                    self.state = 'OVERWORLD'
+                    self.shop = None
+                else:
+                    self.shop.draw()
+
+            elif self.state == 'MENU':
+                action = self.menu.handle_events()
+                if action == 'OVERWORLD':
+                    self.state = 'OVERWORLD'
+                    self.menu = None
+                else:
+                    self.menu.draw()
 
             self.clock.tick(FPS)
 

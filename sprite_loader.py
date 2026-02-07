@@ -28,7 +28,27 @@ class SpriteLoader:
         return states
 
     @staticmethod
-    def get_boss_sprites():
+    def get_boss_sprites(boss_type='slime'):
+        if boss_type == 'bee':
+            base = f"{BOSS_SPRITE_PATH}/bee_"
+            states = {
+                'idle': SpriteLoader.load_image(f"{base}rest.png", 5),
+                'walk_a': SpriteLoader.load_image(f"{base}a.png", 5),
+                'walk_b': SpriteLoader.load_image(f"{base}b.png", 5),
+            }
+            return {'intro': states, 'phase1': states, 'phase2': states}
+            
+        elif boss_type == 'ladybug':
+            base = f"{BOSS_SPRITE_PATH}/ladybug_"
+            states = {
+                'idle': SpriteLoader.load_image(f"{base}rest.png", 5),
+                'walk_a': SpriteLoader.load_image(f"{base}walk_a.png", 5),
+                'walk_b': SpriteLoader.load_image(f"{base}walk_b.png", 5),
+                'death': SpriteLoader.load_image(f"{base}fly.png", 5),
+            }
+            return {'intro': states, 'phase1': states, 'phase2': states}
+
+        # Default Slime King
         # Phase 0: Intro (Slime Spike)
         intro_base = f"{ASSET_DIR}/Sprites/Enemies/Double/slime_spike_"
         intro_states = {

@@ -63,16 +63,22 @@ class OverworldObstacle(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=pos)
 
 class OverworldNode(pygame.sprite.Sprite):
-    def __init__(self, pos, boss_name):
+    def __init__(self, pos, name, type='BATTLE', is_completed=False):
         super().__init__()
-        self.image = SpriteLoader.load_image(f"{ASSET_DIR}/Sprites/Tiles/Double/flag_red_a.png", 1.0)
+        if type == 'BATTLE':
+            flag_color = 'green' if is_completed else 'red'
+            self.image = SpriteLoader.load_image(f"{ASSET_DIR}/Sprites/Tiles/Double/flag_{flag_color}_a.png", 0.3)
+        else: # Shop
+            self.image = SpriteLoader.load_image(f"{ASSET_DIR}/Sprites/Tiles/Double/door_closed_top.png", 0.5)
         self.rect = self.image.get_rect(center=pos)
-        self.boss_name = boss_name
+        self.name = name
+        self.type = type
 
 class Overworld:
-    def __init__(self, screen):
+    def __init__(self, screen, defeated_bosses=None):
         self.screen = screen
         self.tile_size = 64
+        self.defeated_bosses = defeated_bosses if defeated_bosses is not None else []
         
         # Assets
         self.grass_tile = SpriteLoader.load_image(f"{ASSET_DIR}/Sprites/Tiles/Default/terrain_grass_block_center.png", 0.5)
@@ -83,7 +89,7 @@ class Overworld:
         self.house_tile = SpriteLoader.load_image(f"{ASSET_DIR}/Sprites/Tiles/Default/window.png", 0.8)
 
         self.player_group = pygame.sprite.GroupSingle()
-        self.player = OverworldPlayer((SCREEN_WIDTH // 6, SCREEN_HEIGHT // 2)) # Start slightly further left
+        self.player = OverworldPlayer((SCREEN_WIDTH // 6, SCREEN_HEIGHT // 2)) 
         self.player_group.add(self.player)
         
         self.obstacle_group = pygame.sprite.Group()
@@ -94,17 +100,18 @@ class Overworld:
 
     def create_map(self):
         # A more 'Cuphead' island map
-        # G: Grass, W: Water, T: Tree, R: Rock, H: House, B: Boss, P: Path
+        # G: Grass, W: Water, T: Tree, R: Rock, H: House, B: Boss, P: Path, S: Shop, K: Bee, L: Ladybug
         map_data = [
-            "WWWWWWWWWWWWWWWWWWWW",
-            "WWWWWWWWWWWWWWWWWWWW",
-            "WWGGPPTTGGGGGGGGGGWW",
+            "WWWWGGGGGGGGGGGGGGWW",
+            "WWSGPPTTGGGGGGGGGGWW",
             "WWGGPPGGGGTTTTGGGGWW",
             "WWGGPPGGGGTTTTGGGGWW",
             "WWGGPPRRRRPPGGGGGGWW",
             "WWGGPPPPPPPPGGGGGGWW",
             "WWGGGGGGHHPPGGGBGGWW",
-            "WWWWWWGGHHPPGGGGGGWW",
+            "WWKWGGGGHHPPGGGGGGWW",
+            "WWGGWWGGGGPPPPGGGGWW",
+            "WWWWWWGGLLGGGGGGGGWW",
             "WWWWWWWWWWWWWWWWWWWW",
             "WWWWWWWWWWWWWWWWWWWW",
         ]
@@ -123,22 +130,33 @@ class Overworld:
                 elif tile == 'H':
                     self.obstacle_group.add(OverworldObstacle((x, y), self.house_tile))
                 elif tile == 'P':
-                    self.path_group.add(OverworldObstacle((x, y), self.path_tile)) # Use path tiles
+                    self.path_group.add(OverworldObstacle((x, y), self.path_tile)) 
                 elif tile == 'B':
-                    self.node_group.add(OverworldNode((x + self.tile_size//2, y + self.tile_size//2), "The Slime King"))
+                    is_completed = "slime" in self.defeated_bosses
+                    self.node_group.add(OverworldNode((x + self.tile_size//2, y + self.tile_size//2), "slime", 'BATTLE', is_completed))
+                elif tile == 'K':
+                    is_completed = "bee" in self.defeated_bosses
+                    self.node_group.add(OverworldNode((x + self.tile_size//2, y + self.tile_size//2), "bee", 'BATTLE', is_completed))
+                elif tile == 'L':
+                    is_completed = "ladybug" in self.defeated_bosses
+                    self.node_group.add(OverworldNode((x + self.tile_size//2, y + self.tile_size//2), "ladybug", 'BATTLE', is_completed))
+                elif tile == 'S':
+                    self.node_group.add(OverworldNode((x + self.tile_size//2, y + self.tile_size//2), "Porkind's Emporium", 'SHOP'))
 
-    def run(self):
+    def run(self, events):
         self.update()
         self.draw()
         
         # Check for encounter
-        if pygame.sprite.spritecollide(self.player, self.node_group, False):
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_x]:
-                # Move player away slightly so it's not immediate loop if they return
-                self.player.pos.x -= 20 
-                return 'BATTLE'
-        return 'OVERWORLD'
+        hits = pygame.sprite.spritecollide(self.player, self.node_group, False)
+        if hits:
+            node = hits[0]
+            for event in events:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_x:
+                    # Move player away slightly
+                    self.player.pos.x -= 20 
+                    return (node.type, node.name)
+        return ('OVERWORLD', None)
 
     def update(self):
         # Collision handling for the player

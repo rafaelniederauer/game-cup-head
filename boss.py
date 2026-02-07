@@ -5,9 +5,10 @@ from settings import *
 from sprite_loader import SpriteLoader
 
 class Boss(pygame.sprite.Sprite):
-    def __init__(self, x, y):
+    def __init__(self, x, y, boss_type='slime'):
         super().__init__()
-        self.all_sprites = SpriteLoader.get_boss_sprites()
+        self.boss_type = boss_type
+        self.all_sprites = SpriteLoader.get_boss_sprites(boss_type)
         self.phase = 'intro'
         self.state = 'idle'
         self.sprites = self.all_sprites['intro']
@@ -18,7 +19,15 @@ class Boss(pygame.sprite.Sprite):
         self.max_health = 100
         self.attack_timer = 0
         self.shoot_timer = 0
-        self.shoot_cooldown = 120 # every 2 seconds
+        
+        # Base settings based on boss type
+        if self.boss_type == 'bee':
+            self.shoot_cooldown = 45 # Fast shooting
+        elif self.boss_type == 'ladybug':
+            self.shoot_cooldown = 150 # Slow shooting (block shots)
+        else: # slime or default
+            self.shoot_cooldown = 120
+            
         self.frame_index = 0
         self.animation_speed = 0.1
         self.death_timer = 180 # 3 seconds death animation
@@ -49,49 +58,116 @@ class Boss(pygame.sprite.Sprite):
                 self.kill()
             return
 
+        # Phase logic depends on boss type
         if self.phase == 'intro':
-            # Horizontal movement
-            self.rect.x += self.direction_x * 5
-            if self.rect.left <= 0:
-                self.rect.left = 0
-                self.direction_x = 1
-            elif self.rect.right >= SCREEN_WIDTH:
-                self.rect.right = SCREEN_WIDTH
-                self.direction_x = -1
-            
-            # Vertical movement (Jumping)
-            self.velocity_y += self.gravity
-            self.rect.y += self.velocity_y
-            
-            if self.rect.bottom >= SCREEN_HEIGHT - 50:
-                self.rect.bottom = SCREEN_HEIGHT - 50
-                self.velocity_y = self.jump_speed
-            return
+            self.move_intro()
+        elif self.phase == 'phase1':
+            self.move_phase1()
+        elif self.phase == 'phase2':
+            self.move_phase2()
 
-        if self.phase == 'phase2':
-            # Move to top first
+    def move_intro(self):
+        # Default intro movement: Horizontal jumping (used by Slime and Ladybug)
+        self.rect.x += self.direction_x * 5
+        if self.rect.left <= 0:
+            self.rect.left = 0
+            self.direction_x = 1
+        elif self.rect.right >= SCREEN_WIDTH:
+            self.rect.right = SCREEN_WIDTH
+            self.direction_x = -1
+        
+        # Vertical movement (Jumping)
+        self.velocity_y += self.gravity
+        self.rect.y += self.velocity_y
+        
+        if self.rect.bottom >= SCREEN_HEIGHT - 50:
+            self.rect.bottom = SCREEN_HEIGHT - 50
+            self.velocity_y = self.jump_speed
+
+        if self.boss_type == 'bee':
+            # Bee intro is faster and doesn't jump as much
+            self.velocity_y = 0
+            self.rect.centery = SCREEN_HEIGHT // 2
+            self.rect.x += self.direction_x * 10 # Speed boost for bee intro
+
+    def move_phase1(self):
+        if self.boss_type == 'bee':
+            # Figure-eight hovering
+            t = pygame.time.get_ticks() * 0.002
+            self.rect.centerx = SCREEN_WIDTH // 2 + math.cos(t) * 300
+            self.rect.centery = SCREEN_HEIGHT // 3 + math.sin(t * 2) * 100
+        elif self.boss_type == 'ladybug':
+            # Ground patrol: Horizontal walking
+            self.rect.x += self.direction_x * 7
+            self.rect.bottom = SCREEN_HEIGHT - 50
+            if self.rect.left <= 50 or self.rect.right >= SCREEN_WIDTH - 50:
+                self.direction_x *= -1
+        else: # Slime or default
+            # Phase 1 Slime: Stays still (original used sine wave and horizontal movement)
+            # We just ensure it's at a good height
+            self.rect.bottom = SCREEN_HEIGHT - 50
+
+    def move_phase2(self):
+        if self.boss_type == 'ladybug':
+            # Ceiling hang: Move to top and strafe
             if self.rect.top > 50:
                 self.rect.y -= 5
             else:
-                # Strafe at the top
+                self.rect.x += self.direction_x * 8
+                if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
+                    self.direction_x *= -1
+        elif self.boss_type == 'bee':
+            # Tight Orbit: Strafe back and forth with vertical sine wave
+            self.rect.x += self.direction_x * 12
+            self.rect.y = 150 + math.sin(pygame.time.get_ticks() * 0.01) * 50
+            if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
+                self.direction_x *= -1
+        else: # Slime or default
+            # Fly at the top (original behavior)
+            if self.rect.top > 50:
+                self.rect.y -= 5
+            else:
                 self.rect.x += self.direction_x * 10
-                if self.rect.left <= 0:
-                    self.rect.left = 0
-                    self.direction_x = 1
-                elif self.rect.right >= SCREEN_WIDTH:
-                    self.rect.right = SCREEN_WIDTH
-                    self.direction_x = -1
-            return
+                if self.rect.left <= 0 or self.rect.right >= SCREEN_WIDTH:
+                    self.direction_x *= -1
 
-        # Phase 1 logic
-        self.rect.y += math.sin(pygame.time.get_ticks() * 0.005) * 2
+    def get_attack_settings(self):
+        """Returns a list of bullet parameters (bullet_type, scale, speed, angle_offset)"""
+        settings = []
+        
+        if self.boss_type == 'ladybug':
+            if self.phase == 'phase2':
+                # Dropping block shots from ceiling
+                settings.append(('brick', 1.5, 10, 90)) # Shoot downwards
+            else:
+                # Standard ground block shot
+                settings.append(('brick', 1.5, 6, 0))
+        elif self.boss_type == 'bee':
+            if self.phase == 'phase2':
+                # Burst of stingers, but slower (was speed 15)
+                settings.append(('brick', 0.4, 8, -10))
+                settings.append(('brick', 0.4, 8, 0))
+                settings.append(('brick', 0.4, 8, 10))
+            else:
+                # Standard stinger, but slower (was speed 15)
+                settings.append(('brick', 0.4, 10, 0))
+        else: # slime
+            # Revert Phase 2 speed to Phase 1 speed (8)
+            settings.append(('brick', 0.5, 8, 0))
+                
+        return settings
 
     def transition_to_phase(self, new_phase):
         self.phase = new_phase
         self.sprites = self.all_sprites[new_phase]
         self.health = 100 # Reset health for new phase
         if new_phase == 'phase2':
-            self.shoot_cooldown = 60 # Faster shooting in phase 2
+            if self.boss_type == 'bee':
+                self.shoot_cooldown = 100 # Slower shooting in Phase 2 (was 30)
+            elif self.boss_type == 'ladybug':
+                self.shoot_cooldown = 100
+            else:
+                self.shoot_cooldown = 60 # Faster shooting in phase 2 for slime
         
     def trigger_death(self):
         self.state = 'dying'
