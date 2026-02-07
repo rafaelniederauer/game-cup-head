@@ -5,7 +5,7 @@ from sprite_loader import SpriteLoader
 from player import Player, Ghost
 from boss import Boss
 from bullets import Bullet, BossBullet
-from overworld import Overworld
+from overworld import OverworldPlayer, OverworldNode, Island1, Island2
 
 class Battle:
     def __init__(self, screen, boss_type='slime'):
@@ -222,11 +222,19 @@ class Game:
             'max_hp_base': 3,
             'powers': [], # Owned powers
             'equipped_powers': [], # Active powers
-            'defeated_bosses': [] # List of boss names/types defeated
+            'defeated_bosses': [], # List of boss names/types defeated
+            'has_key': False, # Golden key to Island 2
+            'is_portal_unlocked': False, # Whether the door is open
+            'current_island': 1 # Track which island we're on
         }
         
         self.state = 'OVERWORLD'
-        self.overworld = Overworld(self.screen, self.global_player_data['defeated_bosses'])
+        self.overworld = Island1(
+            self.screen, 
+            self.global_player_data['defeated_bosses'],
+            self.global_player_data['has_key'],
+            self.global_player_data['is_portal_unlocked']
+        )
         self.battle = None
         self.shop = None
         self.menu = None
@@ -249,6 +257,23 @@ class Game:
                     # Only sync EQUIPPED powers to the battle player
                     self.battle.player.powers = self.global_player_data['equipped_powers']
                     self.state = 'BATTLE'
+                elif node_type == 'PORTAL':
+                    if self.global_player_data['has_key']:
+                        if not self.global_player_data['is_portal_unlocked']:
+                            # Step 1: Unlock
+                            self.global_player_data['is_portal_unlocked'] = True
+                            # Refresh overworld to show open door
+                            self.overworld = Island1(
+                                self.screen, 
+                                self.global_player_data['defeated_bosses'],
+                                self.global_player_data['has_key'],
+                                self.global_player_data['is_portal_unlocked']
+                            )
+                        else:
+                            # Step 2: Enter
+                            self.global_player_data['current_island'] = 2
+                            self.state = 'ISLAND2'
+                            self.overworld = Island2(self.screen, self.global_player_data['defeated_bosses'])
                 elif node_type == 'SHOP':
                     from shop import Shop
                     self.shop = Shop(self.screen)
@@ -277,10 +302,22 @@ class Game:
                         # Record boss as defeated
                         if self.battle.boss.boss_type not in self.global_player_data['defeated_bosses']:
                             self.global_player_data['defeated_bosses'].append(self.battle.boss.boss_type)
+                        
+                        # Check for all bosses defeated to award key
+                        if len(self.global_player_data['defeated_bosses']) == 3:
+                            self.global_player_data['has_key'] = True
                     
                     self.state = 'OVERWORLD'
-                    # Re-instantiate overworld to reflect changes (flag colors)
-                    self.overworld = Overworld(self.screen, self.global_player_data['defeated_bosses'])
+                    # Re-instantiate overworld to reflect changes (flag colors & portal)
+                    if self.global_player_data['current_island'] == 1:
+                        self.overworld = Island1(
+                            self.screen, 
+                            self.global_player_data['defeated_bosses'],
+                            self.global_player_data['has_key'],
+                            self.global_player_data['is_portal_unlocked']
+                        )
+                    else:
+                        self.overworld = Island2(self.screen, self.global_player_data['defeated_bosses'])
                     self.battle = None 
                 elif action == 'MENU':
                     from menu import Menu
@@ -313,7 +350,40 @@ class Game:
                 else:
                     self.menu.draw()
 
+            elif self.state == 'ISLAND2':
+                events = pygame.event.get()
+                action = self.overworld.run(events) # It can return 'OVERWORLD' or node interactions
+                
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_r: # R to return to World Map 1
+                            self.global_player_data['current_island'] = 1
+                            self.state = 'OVERWORLD'
+                            self.overworld = Island1(
+                                self.screen, 
+                                self.global_player_data['defeated_bosses'],
+                                self.global_player_data['has_key'],
+                                self.global_player_data['is_portal_unlocked']
+                            )
+
             self.clock.tick(FPS)
+
+    def draw_island2_screen(self):
+        self.screen.fill((30, 30, 60)) # Deep blue
+        font_big = pygame.font.SysFont('Arial', 80, bold=True)
+        island_text = font_big.render("WELCOME TO ISLAND 2!", True, YELLOW)
+        self.screen.blit(island_text, (SCREEN_WIDTH//2 - island_text.get_width()//2, 200))
+        
+        font_small = pygame.font.SysFont('Arial', 32)
+        info_text = font_small.render("More bosses and challenges await...", True, WHITE)
+        self.screen.blit(info_text, (SCREEN_WIDTH//2 - info_text.get_width()//2, 350))
+        
+        hint_text = font_small.render("Press R to return to Map", True, WHITE)
+        self.screen.blit(hint_text, (SCREEN_WIDTH//2 - hint_text.get_width()//2, SCREEN_HEIGHT - 100))
+        pygame.display.flip()
 
 if __name__ == "__main__":
     game = Game()
